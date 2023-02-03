@@ -1,3 +1,7 @@
-Ceci est dans un fichier
+
 PA
+
 ceci est un conflit
+
+
+
