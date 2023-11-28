@@ -19,18 +19,17 @@ import alert
 
 
 #------------------------------------------------------ Settings
-nite = 100  # Number of time iterations
+nite = 250  # Number of time iterations
 CFL = 0.5  # CFL number
-#mesh_path = curr_dir + "/../mesh/mesh_rectangle.msh"  # Path to gmsh mesh file
 mesh_path = curr_dir + "/../mesh/naca0012.msh"  # Path to gmsh mesh file
 nfigures = 0  # Number of figures desired
 localTimeStep = False  # Local time step or global time step (=same for all cells)
 
 # for "farfield" condition
 Pinf = 101325  # Pressure (Pa)
-Tinf = 268.3  # Temperature (K)
-Minf = 0.273  # Mach number
-alpha = 4  # Angle of Attack (deg)
+Tinf = 275  # Temperature (K)
+Minf = 1.1   # Mach number
+alpha = 1.25  # Angle of Attack (deg)
 
 # for "inlet" condition
 # rhouInf = 1  # x-direction
@@ -83,8 +82,10 @@ dt = np.zeros(mesh.ncells())  # Time step in each cell (will evolve with CFL cri
 #------------------------------------------------------ Run simulation
 # Loop over time
 
-for i in range(nite):
+
+for t in range(nite):
     solve_one_time_step(mesh, q, flux, dt, params)
+
 
 
 #------------------------------------------------------ Post-process

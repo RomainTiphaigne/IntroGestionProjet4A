@@ -32,24 +32,16 @@ def compute_time_step(mesh, q, dt, a, CFL, local):
     Note that this information (shortest edge length for each cell) could be stored
     in mesh.properties instead of being recomputed here at each time step
     """
-
-    
-
     L = 1e9
     for icell in range(mesh.ncells()):
-
         for iface in mesh.c2f[icell]:
             L = min(L, mesh.face_area(iface))
 
-    u = np.linalg.norm(q[icell, 1::]/q[icell, 0])
-
-    dt[icell] = CFL * L / max(abs(u - a), abs(u + a))
-
+        u = np.linalg.norm(q[icell, 1::]/q[icell, 0])
+        dt[icell] = CFL * L / max(abs(u - a), abs(u + a))
 
     if not local :
         dt[:] = np.min(dt)
-
-
 
 
 
@@ -113,8 +105,10 @@ def euler_isothermal_flux(q, a):
 
     The expected result is the flux vector.
     """
-
-    return np.array([q[1], q[2]**2/q[0] + a**2*q[0], q[1]*q[2]/q[0]]) 
+    Fx = np.array([q[1],q[1]**2/q[0]+a**2*q[0],q[1]*q[2]/q[0]])
+    #Fy = np.array([q[2],q[1]*q[2]/q[0],q[2]**2/q[0]+a**2*q[0]])
+    
+    return Fx
 
 
 
@@ -129,17 +123,13 @@ def compute_inner_flux(mesh, q, flux, a):
 
     `a` is the sound velocity.
     """
-
-    for iface in range(mesh.nfaces()):
-        cellG = mesh.f2c[iface, 0]
-        cellD = mesh.f2c[iface, 1]
-        
-        if cellD < 0 :
-            flux[iface] = 0
-        else :
-            flux[iface] = compute_face_flux(mesh.face_normal(iface), q[cellG, :], q[cellD, :], a)
+    for i in range(mesh.nfaces()):
+        c1,c2 = mesh.f2c[i]
+        if c2>=0:
+            flux[i,:] = compute_face_flux(mesh.face_normal(i),q[c1],q[c2],a)
 
 
+    
 
 def compute_face_flux(n, qi, qj, a):
     """
@@ -336,27 +326,24 @@ def solve_one_time_step(mesh, q, flux, dt, params):
     local = params["localTimeStep"]
 
     # Compute time step
-    # Compute flux on inner faces
-    # Apply boundary condition
-    # Perform explicit integration
-
     compute_time_step(mesh, q, dt, a, CFL, local)
-
+    # Compute flux on inner faces
     compute_inner_flux(mesh, q, flux, a)
-
+    # Apply boundary condition
     boundary_conditions(mesh, q, flux, params)
+    # Perform explicit integration
+    for i_cell in range(mesh.ncells()):
+        for j_face in mesh.c2f[i_cell]:
+            if mesh.f2c[j_face,0]==i_cell:
+                q[i_cell] -= dt[i_cell]/mesh.cell_volume(i_cell) * flux[j_face] * mesh.face_area(j_face)
+            else : 
+                q[i_cell] += dt[i_cell]/mesh.cell_volume(i_cell) * flux[j_face] * mesh.face_area(j_face)
+    
+    
+    
+    
+    
+    
+    
 
-    for icell in range(mesh.ncells()):
-        for iface in mesh.c2f[icell]:
-            
-            n = mesh.f2c[iface] #la normale va de 0 vers 1
-            
-            c = mesh.cell_volume(icell)
-
-            if mesh.f2c[iface][0] == n[0]:
-                q[icell, :] = q[icell, :] + dt[icell]/c*flux[n[0]] * mesh.face_area(iface)
-            else :
-                q[icell, :] = q[icell, :] - dt[icell]/c*flux[n[0]] * mesh.face_area(iface)
-
-
-            
+    
