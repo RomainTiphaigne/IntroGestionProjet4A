@@ -9,6 +9,7 @@ sys.path.insert(1, curr_dir + '/output')
 
 from mesh import mesh_from_msh
 import numpy as np
+import matplotlib.pyplot as plt
 from math import pi, sqrt, cos, sin
 from solver import solve_one_time_step
 from myplot import MyPlot
@@ -19,8 +20,9 @@ import alert
 
 
 #------------------------------------------------------ Settings
-nite = 250  # Number of time iterations
+nite = 40  # Number of time iterations
 CFL = 0.5  # CFL number
+#mesh_path = curr_dir + "/../mesh/mesh_rectangle.msh"  # Path to gmsh mesh file
 mesh_path = curr_dir + "/../mesh/naca0012.msh"  # Path to gmsh mesh file
 nfigures = 0  # Number of figures desired
 localTimeStep = False  # Local time step or global time step (=same for all cells)
@@ -28,8 +30,9 @@ localTimeStep = False  # Local time step or global time step (=same for all cell
 # for "farfield" condition
 Pinf = 101325  # Pressure (Pa)
 Tinf = 275  # Temperature (K)
-Minf = 1.1   # Mach number
-alpha = 1.25  # Angle of Attack (deg)
+Minf = 1.273  # Mach number
+#Minf = 0.273  # Mach number
+alpha = 15  # Angle of Attack (deg)
 
 # for "inlet" condition
 # rhouInf = 1  # x-direction
@@ -82,10 +85,29 @@ dt = np.zeros(mesh.ncells())  # Time step in each cell (will evolve with CFL cri
 #------------------------------------------------------ Run simulation
 # Loop over time
 
+evol_q = np.zeros((nite, 3))
+normq = np.zeros((nite, 3))
 
-for t in range(nite):
+for i in range(nite):
+    q_old = np.copy(q)
     solve_one_time_step(mesh, q, flux, dt, params)
-
+    
+    evol_q[i, :] = np.array([np.linalg.norm((q - q_old)[:, 0]), np.linalg.norm((q - q_old)[:, 1]), np.linalg.norm((q - q_old)[:, 2])])
+    normq[i, :] = np.array([np.linalg.norm((q)[:, 0]), np.linalg.norm((q)[:, 1]), np.linalg.norm((q)[:, 2])])
+    
+    if(i%10==0):
+        
+        print("rho : ", np.linalg.norm(q [:, 0]))
+        print("rho u : ", np.linalg.norm(q [:, 1]))
+        print("rho v : ", np.linalg.norm(q[:, 2]))
+        print("\n")
+        
+        """
+        print("rho : ", np.linalg.norm((q - q_old)[:, 0]))
+        print("rho u : ", np.linalg.norm((q - q_old)[:, 1]))
+        print("rho v : ", np.linalg.norm((q - q_old)[:, 2]))
+        print("\n")
+        """
 
 
 #------------------------------------------------------ Post-process
@@ -104,6 +126,34 @@ print("a = {:.3e}".format(a))
 print("Number of cells = {:d}".format(mesh.ncells()))
 print("Local time step ? " + str(localTimeStep))
 
+
+#%%
+fig, ax1 = plt.subplots()
+
+t = np.arange(0, nite)
+
+color = 'tab:red'
+ax1.set_xlabel('iteration')
+ax1.set_ylabel('évolution rho', color=color)
+ax1.plot(t, normq[:, 0], color=color)
+ax1.tick_params(axis='y', labelcolor=color)
+
+ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+
+color = 'tab:blue'
+ax2.set_ylabel('évolution rho u', color=color)  # we already handled the x-label with ax1
+ax2.plot(t, normq[:, 1], color=color)
+ax2.tick_params(axis='y', labelcolor=color)
+
+ax3 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+
+color = 'tab:green'
+ax2.set_ylabel('évolution rho v', color=color)  # we already handled the x-label with ax1
+ax2.plot(t, normq[:, 2], color=color)
+ax2.tick_params(axis='y', labelcolor=color)
+
+fig.tight_layout()  # otherwise the right y-label is slightly clipped
+plt.show()
 # Output solution to file
 surf2ascii(curr_dir + "/../surf.csv", mesh, ["WALL"], q[:, 0], header="x,y,rho")
 
