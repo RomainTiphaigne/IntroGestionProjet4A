@@ -8,7 +8,7 @@ Created on Mon Apr 29 10:38:13 2019
 
 import numpy as np 
 import scipy.sparse 
-from scipy.sparse.linalg import splu
+from scipy.sparse.linalg import spsolve
 import nurbs as nb 
 import copy 
 import matplotlib.pyplot as plt
@@ -199,7 +199,7 @@ class NURBS_Curve:
     
         # p+1 Gauss points for the numerical integration
         npg    = self.pp + 1  # number of Gauss points per element 
-        xi_tilde_pg,wpg  =  nb.GaussLegendre(npg) # numpy array of Gauss points and weights 
+        xsi_tilde_pg,wpg  =  nb.GaussLegendre(npg) # numpy array of Gauss points and weights 
         
         # Initialization
         F = np.zeros(3*self.nbf)
@@ -208,67 +208,90 @@ class NURBS_Curve:
         for e in range(self.nel):
             
             # !!! On récupère la NURBS coordinate puis on calcule xsii et xsii1
+            ni = self.ien[0,e]
+            xsii = self.xxsi[ni]
+            xsii1 = self.xxsi[ni+1]
 
             # Measure of the parametric element 
-            mes = xi_max - xi_min
+            mes = xsii1 - xsii
             
             # treating only elements of non zero measure 
             if mes > 0 :
                 
                 # for the connectivity
                 # list of non zero global funs over the element
-                # !!! bf_index =
+                bf_index = np.sort(self.ien[:,e])
                 
                 # !!! initialisation of the elementary force vector Fe
+                Fe = np.zeros(3*self.nen)
                 
                 #Loop over Gauss quadrature points 
                 for pg in range(npg):
                     
                     # Mapping from parent domain [-1,1] to isoparametric domain [xi_min,xi_max]
                     # !!! calculer xsipg en fonction xsi_tilde_pg
+                    xsipg = xsii + (xsi_tilde_pg[pg]+1)*((xsii1-xsii)/2)
                     # !!! calculer dxsidxsitilde
+                    dxsidxsitilde = (xsii1-xsii)/2
                     
                     # Mapping from isoparametric space to physical space
                     #-------------------------------------------------------
                     
                     # Evaluating the B-spline basis functions (along with derivatives) 
-                    phi,dphidxi = nb.derbasisfuns(ni,self.pp,self.xxsi,1,xi_pg)
+                    phi,dphidxi = nb.derbasisfuns(ni,self.pp,self.xxsi,1,xsipg)
                     
                     # Getting the associated NURBS functions
                     # !!! Calculer les fonctions NURBS N à partir des B-SPline M
+                    N = np.zeros(self.nen)
+                    SumN = sum(phi*self.ctrlPts[2,bf_index])
+                    for i in range(self.nen):
+                        N[i] = phi[i]*self.ctrlPts[2,bf_index[i]]/SumN
+                        
                     # !!! Calculer la dérivée première des fonctions NURBS
+                    dN = np.zeros(self.nen)
+                    SumdN = sum(dphidxi*self.ctrlPts[2,bf_index])
+                    for i in range(self.nen):
+                        dN[i] = ((dphidxi[i]*self.ctrlPts[2,bf_index[i]]*SumN) - (phi[i]*self.ctrlPts[2,bf_index[i]]*SumdN))/SumN**2
                     
                     # Jacobian between physical and isoparametric spaces
                     # !!! Calculer le Jacobien J=dsdxsi
+                    dxdxsi = sum(dN*self.ctrlPts[0,bf_index])
+                    dydxsi = sum(dN*self.ctrlPts[1,bf_index])
+                    J = np.sqrt((dxdxsi**2 + dydxsi**2))
                     
                     # Getting the element force vector
                     #------------------------------------------------
                     
                     # evaluation of the moment at the Gauss point in the pysical space
                     # !!! calculer l'angle teta du point de Gauss dans le repère physique 
+                    y = sum(N*self.ctrlPts[1,bf_index])
+                    sin_teta = y/R
                     # !!! puis c(teta)
+                    c = h**3 * sin_teta
                     
                     # computation of the dF
-                    # !!
+                    dF = np.zeros(3*self.nen)
+                    dF[2*self.nen:] = N*c
                     
                     # Integral evaluation
-                    # !!
+                    Fe += wpg[pg]*dF*J*dxsidxsitilde
 
                 
                 # Assembling
-                #for ibf in range(self.nen):
-                    #for jbf in range(self.nen):
-                        
-                        # !!! Faire l'assemblage
+                for ibf in range(self.nen):   
+                    F[bf_index[ibf]] += Fe[ibf]
+                    F[bf_index[ibf]+self.nbf] += Fe[ibf+self.nen]
+                    F[bf_index[ibf]+2*self.nbf] += Fe[ibf+2*self.nen]
                         
         return F
+    
     
     def Err_L2(self,E,R,b,U):
          
         
         # 9 Gauss points for the numerical integration
         npg    = 9  # number of Gauss points per element 
-        xi_tilde_pg,wpg  =  nb.GaussLegendre(npg) # numpy array collecting Gauss points and weights 
+        xsi_tilde_pg,wpg  =  nb.GaussLegendre(npg) # numpy array collecting Gauss points and weights 
         
         # Initialization
         Err_un = 0
@@ -278,16 +301,19 @@ class NURBS_Curve:
         for e in range(self.nel):
             
             # !!! On récupère la NURBS coordinate puis on calcule xsii et xsii1
+            ni = self.ien[0,e]
+            xsii = self.xxsi[ni]
+            xsii1 = self.xxsi[ni+1]
 
             # Measure of the parametric element 
-            mes = xi_max - xi_min
+            mes = xsii1 - xsii
             
             # treating only elements of non zero measure 
             if mes > 0 :
                 
                 # for the connectivity
                 # list of non zero global funs over the element
-                # !!! bf_index =
+                bf_index = np.sort(self.ien[:,e])
                 
                 # getting the local dof vector Ue
                 # !!! Récupérer le depl élémentaire Ue associé
@@ -295,11 +321,38 @@ class NURBS_Curve:
                 #Loop over Gauss quadrature points 
                 for pg in range(npg):
                     
+                    xsipg = xsii + (xsi_tilde_pg[pg]+1)*((xsii1-xsii)/2)
+                    dxsidxsitilde = (xsii1-xsii)/2
+                    phi,dphidxi = nb.derbasisfuns(ni,self.pp,self.xxsi,1,xsipg)
+                    
+                    N = np.zeros(self.nen)
+                    SumN = sum(phi*self.ctrlPts[2,bf_index])
+                    for i in range(self.nen):
+                        N[i] = phi[i]*self.ctrlPts[2,bf_index[i]]/SumN
+                        
+                    dN = np.zeros(self.nen)
+                    SumdN = sum(dphidxi*self.ctrlPts[2,bf_index])
+                    for i in range(self.nen):
+                        dN[i] = ((dphidxi[i]*self.ctrlPts[2,bf_index[i]]*SumN) - (phi[i]*self.ctrlPts[2,bf_index[i]]*SumdN))/SumN**2
+                    
+                    dxdxsi = sum(dN*self.ctrlPts[0,bf_index])
+                    dydxsi = sum(dN*self.ctrlPts[1,bf_index])
+                    J = np.sqrt((dxdxsi**2 + dydxsi**2))
+                    
+                    y = sum(N*self.ctrlPts[1,bf_index])
+                    teta = np.arcsin(y/R)
+                    
                     # !!! à vous de jouer pour calculer l'erreur (au carré) (cf ci-dessous)
+                    ## A terminer le calcul du U numérique
+                    un_e = 0
+                    for i in range(self.nen):
+                        un_i = U[self.nbf + bf_index[i]]
+                        un_e += N[i]*un_i
+                    un_ex = 12*R**3/(E*b) * ( 0.5*teta*np.sin(teta) + 0.25*((np.sin(teta)*np.sin(2*teta)+np.cos(teta)*np.cos(2*teta))-np.cos(teta)))
     
                     # error
-                    Err_un += wpg[pg]*(un_e-un_ex)**2*J*xi_xi_tilde
-                    Errex_un += wpg[pg]*un_ex**2*J*xi_xi_tilde
+                    Err_un += wpg[pg]*(un_e-un_ex)**2*J*dxsidxsitilde
+                    Errex_un += wpg[pg]*un_ex**2*J*dxsidxsitilde
                     
 
                     
@@ -389,7 +442,7 @@ mu = E/(2*(1+nu))
 # Discrétisation
 #-------------------------
 # nombre d'elements
-nel = 1
+nel = 10
 # degré des fonctions de forme
 p = 2
 # continuité des fonctions de forme
@@ -432,11 +485,19 @@ F = craf.Rhs(h,R)
 
 #%% IMPOSITION DES CL DE DIRICHLET
 #######################################################
-# !!! répondre à Q8
+
+for i in range(3):
+    K[i*craf.nbf,:] = 0
+    K[:,i*craf.nbf] = 0
+    K[i*craf.nbf,i*craf.nbf] = 1
+    F[i*craf.nbf] = 0
+
+    
 
 #%% RESOLUTION DU SYSTÈME LINÉAIRE 
 #######################################################
-# !!! répondre à Q9
+
+U = spsolve(K,F)
 
 
 #%% POST-TRAITEMENT 
